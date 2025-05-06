@@ -1,0 +1,198 @@
+---
+title: "Initial Data Viz"
+author: "Inbal Armony"
+format: html
+editor: visual
+---
+
+## Packages
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+## Data
+```{r}
+#eventually load in new clean csv files i made, for now run other file
+```
+
+## VIZ CITY
+
+### Total fuel use over time
+```{r}
+
+# total fuel by Region 2010-2020
+oil_data %>% 
+  mutate(Year = as.integer(Year)) %>% 
+  group_by(Region, Year) %>% 
+  mutate(total_fuel = sum(Quantity_tons)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=Year, y=total_fuel, color=Region)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Oil sales by region 2010-2020", 
+       y = "Oil sales (tonns)") +
+  theme_minimal() +
+  scale_x_continuous(breaks = c(2010:2020))
+
+# totla fuel pc by region 2010-2020
+oil_data %>% 
+  mutate(Year = as.integer(Year)) %>% 
+  group_by(Region, Year) %>% 
+  mutate(total_fuel = sum(Quantity_tons)) %>%
+  mutate(total_fuel_pc = total_fuel / Population_region) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=Year, y=total_fuel_pc, color=Region)) +
+  geom_line() +
+  geom_point()  +
+  labs(title = "Oil sales per capita by region 2010-2020", 
+       y = "Oil sales per capita  (tonns) ") +
+  theme_minimal() +
+  scale_x_continuous(breaks = c(2010:2020))
+
+# total fuel by Municipality 2010-2020
+oil_data %>% 
+  mutate(Year = as.integer(Year)) %>% 
+  group_by(Municipality, Year) %>% 
+  mutate(total_fuel = sum(Quantity_tons)) %>%
+  ungroup() %>% 
+  ggplot(aes(x=Year, y=total_fuel, color=Municipality)) +
+  geom_line() +
+  geom_point()  +
+  labs(title = "Oil sales by municipality 2010-2020", 
+       y = "Oil sales (tonns)") +
+  theme_minimal()  +
+  scale_x_continuous(breaks = c(2010:2020))
+
+
+# total fuel pc by Municipality 2010-2020
+oil_data %>% 
+  mutate(Year = as.integer(Year)) %>% 
+  group_by(Municipality, Year) %>% 
+  mutate(total_fuel = sum(Quantity_tons)) %>%
+  mutate(total_fuel_pc = total_fuel / Population_munic) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=Year, y=total_fuel_pc, color=Municipality)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Oil sales by municipality 2010-2020", 
+       y = "Oil sales per capita (tonns)") +
+  theme_minimal()  +
+  scale_x_continuous(breaks = c(2010:2020))
+
+```
+
+
+### Different uses
+```{r}
+
+# total oil used by use cat
+oil_data %>% 
+  group_by(Year, Use_category_eng) %>% 
+  mutate(total_use = sum(Quantity_tons)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=Year, y=total_use, color = Use_category_eng)) +
+  geom_line()  +
+  scale_x_continuous(breaks = seq(min(oil_data$Year), max(oil_data$Year), by = 2)) +
+  labs(
+      title = "Total Icelandic Oil Sales by Use Category 2010-2020", 
+      y = "Oil sold (tonns)", 
+      color = "Oil Use Category"
+        ) +
+  theme_minimal()
+
+# facetted by region
+oil_data %>% 
+  group_by(Year, Region, Use_category_eng) %>% 
+  mutate(total_use = sum(Quantity_tons)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=Year, y=total_use, color = Use_category_eng)) +
+  geom_line()  +
+  scale_x_continuous(breaks = seq(min(oil_data$Year), max(oil_data$Year), by = 5)) +
+  facet_wrap(~Region) +
+  labs(
+      title = "Total Icelandic Oil Sales by Use Category 2010-2020", 
+      y = "Oil sold (tonns)", 
+      color = "Oil Use Category"
+        ) +
+  theme_minimal() 
+
+# facetted by region, excluding flights
+oil_data %>%  
+  filter(Use_category_eng != "Flights") %>% 
+  group_by(Year, Region, Use_category_eng) %>% 
+  mutate(total_use = sum(Quantity_tons)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=Year, y=total_use, color = Use_category_eng)) +
+  geom_line()  +
+  scale_x_continuous(breaks = seq(min(oil_data$Year), max(oil_data$Year), by = 5)) +
+  facet_wrap(~Region) +
+  labs(
+      title = "Regional Icelandic Oil Sales by Use Category 2010-2020", 
+      subtitle = "Exluding aviation oil sales",
+      y = "Oil sold (tonns)", 
+      color = "Oil Use Category"
+        ) +
+  theme_minimal() 
+
+# facetted by region, excluding flights, PC
+oil_data %>%  
+  filter(Use_category_eng != "Flights") %>% 
+  group_by(Year, Region, Use_category_eng) %>% 
+  mutate(total_use_PC = sum(Quantity_tons) / Population_region) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=Year, y=total_use_PC, color = Use_category_eng)) +
+  geom_line()  +
+  scale_x_continuous(breaks = seq(min(oil_data$Year), max(oil_data$Year), by = 5)) +
+  facet_wrap(~Region) +
+  labs(
+      title = "Regional Per Capita Icelandic Oil Sales by Use Category 2010-2020", 
+      subtitle = "Exluding aviation oil sales",
+      y = "Oil sold (tonns)", 
+      color = "Oil Use Category"
+        ) +
+  theme_minimal() 
+
+
+```
+
+
+## Trying some lm
+```{r}
+  
+# Do larger populations tend to have higher oil sales?
+model1 <- lm(Quantity_tons ~ Population_region, data = oil_data)
+summary(model1)
+
+# Do larger populations tend to have higher oil sales controlling for national/international trends (e.g., oil prices, policy changes, things that affect all regions)?
+model2 <- lm(Quantity_tons ~ Population_region + factor(Year), data = oil_data)
+summary(model2)
+
+# Do larger populations tend to have higher oil sales controlling for national/international trends (e.g., oil prices, policy changes, things that affect all regions) and controlling for Regional differences?
+model3 <- lm(Quantity_tons ~ Population_region + factor(Year) + Region, data = oil_data)
+summary(model3)
+
+# Are there regional or time-based differences in per capita oil use?
+oil_data$oil_sales_per_capita <- oil_data$Quantity_tons / oil_data$Population_region
+model4 <- lm(oil_sales_per_capita ~ factor(Year) + Region, data = oil_data)
+summary(model4)
+
+# Does being in the capital region increase per capita oil sales?
+oil_data$oil_sales_per_capita <- oil_data$Quantity_tons / oil_data$Population_region
+oil_data <- oil_data %>% 
+  mutate(Capital_region = if_else(
+  Region == "Höfuðborgarsvæðið", TRUE, FALSE, missing = NULL))
+model5 <- lm(oil_sales_per_capita ~ Capital_region, data = oil_data)
+summary(model5)
+
+# Does being in the capital region increase per capita oil sales controlling for years?
+model6 <- lm(oil_sales_per_capita ~ Capital_region + factor(Year), data = oil_data)
+summary(model6)
+
+# Does being in the capital region increase net oil sales controlling for years and population?
+model6 <- lm(Quantity_tons ~ Capital_region + Population_region + factor(Year), data = oil_data)
+summary(model6)
+
+
+```
+

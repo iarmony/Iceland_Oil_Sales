@@ -1,0 +1,178 @@
+---
+title: "Data cleaning"
+author: "Inbal Armony"
+format: html
+editor: visual
+---
+
+## Packages
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+## Load in raw data
+```{r}
+
+# Reading in the excel sheets, created by Efla, in Icelandic. 
+
+oil_data_isl <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "oliusolutolur") 
+
+green_accounting_isl <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "combined_graent_bokhald") 
+
+metin_idnadur_isl <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "metin_notk_idnadur") 
+
+pop_munic_isl <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "ibuafjoldi_leidrett") 
+
+pop_reg_isl <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "ibufjoldi_landshlutar") 
+
+```
+
+## Translating variable names
+```{r}
+
+#translating var names from isl to en and saving to new datasets
+
+oil_data <- oil_data_isl %>% 
+  rename(
+    Supply_station = Birgðastöð,
+    Sale_location = utsolustadur,
+    Postal_code = postnumer,
+    Municipality = sveitarfelag,
+    Region = landshluti,
+    Type = tegund,
+    Supertype = yfirtegund,
+    Sale_type = notkun,
+    Quantity = magn,
+    Quantity_tons = magn_tonn,
+    Year = ar,
+    Use_category = notkunarflokkun,
+    Domestic_international = innanlands_millilanda,
+    Comment = athugasemd,
+    Ship_category = skipaflokkun
+       )
+
+ green_accounting <- green_accounting_isl %>% 
+   rename(
+      Company = fyrirtaeki,
+      Name = nafn,
+      Location = adalstadsetning,
+      Postal_code = postnr,
+      Municipality = sveitarfelag,
+      Region = landshluti,
+      Type_of_industry = tegund_idnadar,
+      Type_of_fuel = tegund_eldsneytis,
+      Supertype = yfirtegund,
+      Scrap_quantity = skrad_magn,
+      Unit = eining,
+      Quantity_ton = magn_tonn,
+      Usage = notkun,
+      Page = bls,
+      URL = url,
+      Year = ar,
+      Oil_inquiry = oliufyrirspurn,
+      Comment = athugasemd,
+      Basic_visit_oil = grunnar_visitolu,
+      us_classification = us_flokkun
+   )
+ 
+ measured_usage <- metin_idnadur_isl %>% 
+   rename(
+      City = stadur,
+      Municipality = sveitarfelag,
+      Region = landshluti,
+      Fuel_type = tegund_eldsneytis,
+      Fuel_supertype = yfirtegund_eldsneytis,
+      Scrap_quantity = skrad_magn,
+      Unit = eining,
+      Quantity_ton = magn_tonn,
+      Year = ar,
+      Comment = athugasemd,
+      Use = flokkun
+   )
+ 
+ pop_munic <- pop_munic_isl %>% 
+   rename(
+     Municipality = sveitarfelag
+   )
+ 
+ pop_reg <- pop_reg_isl %>% 
+   rename(
+     Region = landshluti
+   )
+
+```
+## Exploring
+```{r}
+unique(green_accounting$Type_of_industry)
+unique(green_accounting$us_classification)
+unique(green_accounting$Usage)
+
+unique(oil_data$Use_category)
+unique(oil_data$Sale_type)
+unique(oil_data$Comment)
+
+unique(measured_usage$Use)
+```
+
+## Data cleaning
+```{r}
+#Pivoting longer for population data for  matching
+pop_munic <- pop_munic %>% pivot_longer(cols = 2:12, names_to = "Year", values_to = "Population_munic") %>% mutate(Year = as.integer(Year))
+
+pop_reg <- pop_reg %>% pivot_longer(cols = 2:12, names_to = "Year", values_to = "Population_region") %>% mutate(Year = as.integer(Year))
+```
+
+```{r}
+# translating some values
+
+oil_data <- oil_data  %>% 
+  mutate(Use_category_eng = case_when(
+    Use_category == "Samgöngur á landi" ~ "Land transport",
+    Use_category == "Flug" ~ "Flights",
+    Use_category == "Skip og bátar" ~ "Ships and boats",
+    Use_category == "Önnur notkun" ~ "Other uses",
+    TRUE ~ Use_category  # fallback to original if no match
+  )) 
+
+green_accounting <- green_accounting %>% 
+  mutate(us_class_eng = case_when(
+    us_classification ==  "Fiskimjölsverksmiðjur" ~ "Fishmeal plants",
+    us_classification ==  "Úrgangur og efnamóttaka" ~ "Waste and chemical reception",
+    us_classification ==  "Eldi sjávar- og ferskvatnslífvera" ~ "Marine and freshwater aquaculture",
+    us_classification ==  "Framleiðsla og vinnsla málma" ~ "Metal production and processing",
+    us_classification ==  "Malbikunarstöðvar" ~ "Asphalt plants",
+    us_classification ==  "Efnaiðnaður" ~ "Chemical industry",
+    us_classification ==  "Steinefnaiðnaður" ~ "Mineral industry",
+    us_classification ==  "Matvæla og drykkjarvöruiðnaður" ~ "Food and beverage industry",
+    us_classification ==  "Þauleldi" ~ "Sustainable farming",
+        TRUE ~ us_classification  # fallback to original if no match
+  ) )
+
+```
+
+```{r}
+# Making year an integer
+
+oil_data <- oil_data %>% mutate(Year = as.integer(Year))
+```
+
+```{r}
+# Join with pop
+
+#region
+oil_data <- left_join(oil_data, pop_reg, by=c("Region", "Year"))
+#municipality 
+oil_data <- left_join(oil_data, pop_munic, by=c("Municipality", "Year"))
+
+```
+
+## Saving as csv
+
+```{r}
+
+# Saving new, clean, and translated data sets into csv and will read these in in future R files
+
+
+```
+

@@ -1,0 +1,37 @@
+---
+title: "Data reference"
+author: "Inbal Armony"
+format: html
+editor: visual
+---
+
+Use these file names to run Efla's data. 
+
+## Packages
+```{r}
+library(tidyverse)
+library(readxl)
+```
+## Load in raw data
+```{r}
+
+# Reading in the excel sheets, created by Efla, in Icelandic. Named what they are named in Efla's R scripts.
+
+oliusolutolur_med_flugi <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "oliusolutolur") 
+oliusolutolur_med_flugi$ar <- as.integer(oliusolutolur_med_flugi$ar)
+oliusolutolur <- oliusolutolur_med_flugi %>%
+  filter(notkunarflokkun != 'Flug')
+
+graent_bokhald <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "combined_graent_bokhald") 
+
+metin_idnadur <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "metin_notk_idnadur") 
+
+ibuafjoldi <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "ibuafjoldi_leidrett") 
+
+ibuafjoldi_landshlutar <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "ibufjoldi_landshlutar") 
+
+```
+
+
+
+
