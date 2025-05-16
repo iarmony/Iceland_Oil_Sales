@@ -13,7 +13,10 @@ library(readxl)
 
 ## Data
 ```{r}
-#eventually load in new clean csv files i made, for now run other file
+
+oil_data <- read_csv("../Data/Clean/oil_data.csv")
+supplementary_data  <- read_csv("../Data/Clean/supplementary_data.csv")
+
 ```
 
 ## VIZ CITY
@@ -21,26 +24,44 @@ library(readxl)
 ### Total fuel use over time
 ```{r}
 
-# total fuel by Region 2010-2020
+# total fuel by Region 2010-2020, no flights, no capital
 oil_data %>% 
-  mutate(Year = as.integer(Year)) %>% 
+  mutate(Year = as.integer(Year)) %>%
+  mutate(Quantity_tons = na.omit(Quantity_tons), Region = na.omit(Region)) %>% 
+  filter(Use_category_eng != "Flights") %>% 
+  group_by(Region, Year) %>% 
+  mutate(total_fuel = sum(Quantity_tons)) %>% 
+    filter(Region != "Höfuðborgarsvæðið") %>% 
+  ungroup() %>% 
+  ggplot(aes(x=Year, y=total_fuel, color=Region)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Oil sales by region 2010-2020, excluding flights", 
+       y = "Oil sales (tonns)") +
+  theme_minimal() +
+  scale_x_continuous(breaks = c(2010:2020))
+
+# total fuel by Region 2010-2020, no flights, yes capital
+oil_data %>% 
+  mutate(Year = as.integer(Year)) %>%
+  mutate(Quantity_tons = na.omit(Quantity_tons), Region = na.omit(Region)) %>% 
+  filter(Use_category_eng != "Flights") %>% 
   group_by(Region, Year) %>% 
   mutate(total_fuel = sum(Quantity_tons)) %>% 
   ungroup() %>% 
   ggplot(aes(x=Year, y=total_fuel, color=Region)) +
   geom_line() +
   geom_point() +
-  labs(title = "Oil sales by region 2010-2020", 
+  labs(title = "Oil sales by region 2010-2020, excluding flights", 
        y = "Oil sales (tonns)") +
   theme_minimal() +
   scale_x_continuous(breaks = c(2010:2020))
 
-# totla fuel pc by region 2010-2020
+# total fuel pc by region 2010-2020, no flights
 oil_data %>% 
-  mutate(Year = as.integer(Year)) %>% 
+  filter(Use_category_eng != "Flights") %>% 
   group_by(Region, Year) %>% 
-  mutate(total_fuel = sum(Quantity_tons)) %>%
-  mutate(total_fuel_pc = total_fuel / Population_region) %>% 
+  summarize(total_fuel_pc = sum(Quantity_tons) / Population_region) %>% 
   ungroup() %>% 
   ggplot(aes(x=Year, y=total_fuel_pc, color=Region)) +
   geom_line() +
@@ -50,35 +71,29 @@ oil_data %>%
   theme_minimal() +
   scale_x_continuous(breaks = c(2010:2020))
 
-# total fuel by Municipality 2010-2020
-oil_data %>% 
-  mutate(Year = as.integer(Year)) %>% 
-  group_by(Municipality, Year) %>% 
-  mutate(total_fuel = sum(Quantity_tons)) %>%
-  ungroup() %>% 
-  ggplot(aes(x=Year, y=total_fuel, color=Municipality)) +
-  geom_line() +
-  geom_point()  +
-  labs(title = "Oil sales by municipality 2010-2020", 
-       y = "Oil sales (tonns)") +
-  theme_minimal()  +
-  scale_x_continuous(breaks = c(2010:2020))
 
 
-# total fuel pc by Municipality 2010-2020
-oil_data %>% 
-  mutate(Year = as.integer(Year)) %>% 
-  group_by(Municipality, Year) %>% 
-  mutate(total_fuel = sum(Quantity_tons)) %>%
-  mutate(total_fuel_pc = total_fuel / Population_munic) %>% 
-  ungroup() %>% 
-  ggplot(aes(x=Year, y=total_fuel_pc, color=Municipality)) +
-  geom_line() +
-  geom_point() +
-  labs(title = "Oil sales by municipality 2010-2020", 
-       y = "Oil sales per capita (tonns)") +
-  theme_minimal()  +
-  scale_x_continuous(breaks = c(2010:2020))
+# Step 1: Summarize total tons sold and population by region and year
+sales_summary <- oil_data %>%
+    filter(Use_category_eng != "Flights") %>% 
+  group_by(Region, Year) %>%
+  summarise(
+    total_tons = sum(Quantity_tons),          # replace 'tons_sold' with your column name
+    population = first(Population_region)        # assumes population is constant within region-year
+  ) %>%
+  ungroup() %>%
+  mutate(per_capita_sales = total_tons / population)
+
+# Step 2: Plot per capita sales
+ggplot(sales_summary, aes(x = Year, y = per_capita_sales, color = Region, group = Region)) +
+  geom_line(size = 1.2) +
+  labs(
+    title = "Per Capita Oil Sales (Tons) by Region Over Time",
+    x = "Year",
+    y = "Per Capita Oil Sales (Tons)",
+    color = "Region"
+  ) +
+  theme_minimal()
 
 ```
 

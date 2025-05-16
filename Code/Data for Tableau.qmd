@@ -1,0 +1,124 @@
+---
+title: "Tableau Ready Data"
+author: "Inbal Armony"
+format: html
+editor: visual
+---
+
+## Packages
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+library(sf)
+```
+
+## Data
+
+```{r}
+
+oil_data <- read_csv("../Data/Clean/oil_data.csv")
+supplementary_data  <- read_csv("../Data/Clean/supplementary_data.csv")
+geo_data <- st_read("../Data/Raw/Iceland Geo Data.geojson")
+
+```
+
+## Cleaned geojson file
+
+```{r}
+# Making municipality/region df to add regions to it
+region_data <- oil_data %>%
+  separate_rows(Municipality, sep = ",") %>% 
+  select(Municipality, Region) %>% 
+  distinct()
+
+# making grouped municipality/ municipality df to add grouped municipality to it
+
+municipality_groups <- oil_data %>% 
+  select(Municipality) %>% 
+  distinct()
+
+split_municipality_groups <- function(df) {
+  df_expanded <- df %>%
+    # Create a new column 'Municipality_group' that copies the original 'Municipality' column
+    dplyr::mutate(Municipality_group = Municipality) %>%
+    
+    # Enable row-wise operations so each row is processed individually
+    dplyr::rowwise() %>%
+    
+    # Split the 'Municipality_group' string by commas into a list of individual names
+    dplyr::mutate(Municipality_individual = strsplit(Municipality_group, ",")) %>%
+    
+    # Unnest the list column so each individual municipality gets its own row
+    tidyr::unnest(Municipality_individual) %>%
+    
+    # Trim any leading or trailing whitespace from the individual municipality names
+    dplyr::mutate(Municipality_individual = trimws(Municipality_individual)) %>%
+    
+    # Keep only the two relevant columns: individual names and their original group
+    dplyr::select(Municipality_individual, Municipality_group) %>%
+    
+    # Remove row-wise grouping to return to standard data frame behavior
+    dplyr::ungroup()
+  
+  return(df_expanded)
+}
+
+
+municipality_groups <- split_municipality_groups(municipality_groups) %>% rename(Municipality = Municipality_individual)
+
+# Translating geojson variable
+# names(geo_data)
+geo_new <- geo_data %>% 
+  rename(Municipality = sveitarfelag) %>%
+  left_join(region_data, by = "Municipality") %>% 
+  left_join(municipality_groups, by = "Municipality")
+
+# Save new geojson file
+st_write(geo_new, "../Data/Clean/Final_geo_data.geojson")
+
+```
+
+## Per capita municpality oil sales
+
+```{r}
+summary_data_per_capita_nf <- oil_data %>%
+  filter(Use_category_eng != "Flights") %>% 
+  group_by(Municipality) %>%
+  summarise(total_oil_pc = (sum(Quantity_tons, na.rm = TRUE)/11) / mean(Population_munic))
+
+# Separates munciaplity groups from nrow = 40 to nrow = 62.
+per_capita_62 <- summary_data_per_capita %>%
+  separate_rows(Municipality, sep = ",")
+
+#saving
+wb <- createWorkbook()
+
+addWorksheet(wb, "oil_data_munic_pc")
+writeData(wb, "oil_data_munic_pc", summary_data_per_capita_nf)
+
+addWorksheet(wb, "per_capita_62")
+writeData(wb, "per_capita_62", per_capita_62)
+
+saveWorkbook(wb, "../Data/Clean/oil_munic_pc_nf.xlsx", overwrite = TRUE)
+
+```
+
+## per capita regional oil sales
+
+```{r}
+regional_data_per_capita <- oil_data %>%
+  filter(Use_category_eng != "Flights") %>% 
+  group_by(Region) %>%
+  summarise(total_oil_pc = (sum(Quantity_tons, na.rm = TRUE)/11) / mean(Population_region))
+
+regional_data_per_capita %>% 
+  summarise(range(total_oil_pc))
+#saving
+wb <- createWorkbook()
+addWorksheet(wb, "oil_data_region_pc")
+writeData(wb, "oil_data_region_pc", regional_data_per_capita)
+saveWorkbook(wb, "../Data/Clean/oil_region_pc.xlsx", overwrite = TRUE)
+
+```

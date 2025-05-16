@@ -6,12 +6,16 @@ editor: visual
 ---
 
 ## Packages
+
 ```{r}
 library(tidyverse)
 library(readxl)
+library(openxlsx)
+library(sf)
 ```
 
 ## Load in raw data
+
 ```{r}
 
 # Reading in the excel sheets, created by Efla, in Icelandic. 
@@ -26,9 +30,13 @@ pop_munic_isl <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "ibuafjoldi_le
 
 pop_reg_isl <- read_excel("../Data/Raw/Efla Data.xlsx", sheet = "ibufjoldi_landshlutar") 
 
+geo_data <- st_read("../Data/Raw/Iceland Geo Data.geojson")
+
 ```
 
-## Translating variable names
+# Data cleaning
+#### Translating variable names
+
 ```{r}
 
 #translating var names from isl to en and saving to new datasets
@@ -102,20 +110,25 @@ oil_data <- oil_data_isl %>%
    )
 
 ```
-## Exploring
+
+#### Exploring
+
 ```{r}
-unique(green_accounting$Type_of_industry)
-unique(green_accounting$us_classification)
-unique(green_accounting$Usage)
+# unique(green_accounting$Type_of_industry)
+# unique(green_accounting$us_classification)
+# unique(green_accounting$Usage)
+# 
+# unique(oil_data$Use_category)
+# unique(oil_data$Sale_type)
+# unique(oil_data$Comment)
+# 
+#unique(measured_usage$Use)
 
-unique(oil_data$Use_category)
-unique(oil_data$Sale_type)
-unique(oil_data$Comment)
-
-unique(measured_usage$Use)
 ```
 
-## Data cleaning
+
+#### Population
+
 ```{r}
 #Pivoting longer for population data for  matching
 pop_munic <- pop_munic %>% pivot_longer(cols = 2:12, names_to = "Year", values_to = "Population_munic") %>% mutate(Year = as.integer(Year))
@@ -123,6 +136,7 @@ pop_munic <- pop_munic %>% pivot_longer(cols = 2:12, names_to = "Year", values_t
 pop_reg <- pop_reg %>% pivot_longer(cols = 2:12, names_to = "Year", values_to = "Population_region") %>% mutate(Year = as.integer(Year))
 ```
 
+#### Value translation
 ```{r}
 # translating some values
 
@@ -149,30 +163,250 @@ green_accounting <- green_accounting %>%
         TRUE ~ us_classification  # fallback to original if no match
   ) )
 
+measured_usage <- measured_usage  %>% 
+  mutate(Use_eng = case_when(
+    Use == "Landbúnaður" ~ "Agriculture",
+    Use == "Húshitun / Raforkuframleiðsla" ~ "Domestic Heating / Power Generation",
+    Use == "Flugvallarstarfsemi" ~ "Airport Operations",
+    TRUE ~ Use  # fallback to original if no match
+  )) 
+
+
 ```
 
+#### Year
 ```{r}
 # Making year an integer
-
 oil_data <- oil_data %>% mutate(Year = as.integer(Year))
+green_accounting <- green_accounting %>% mutate(Year = as.integer(Year))
+measured_usage <- measured_usage %>% mutate(Year = as.integer(Year))
+
 ```
 
-```{r}
-# Join with pop
+## Joins 
 
+```{r}
+# Joins
+
+# Oil data to pop
 #region
 oil_data <- left_join(oil_data, pop_reg, by=c("Region", "Year"))
 #municipality 
 oil_data <- left_join(oil_data, pop_munic, by=c("Municipality", "Year"))
 
+
+# Combine the supplementary data
+# Filter out columns in both that are not needed for joining, fix names, and bind the datasets
+
+supplementary_data <- bind_rows(
+  green_accounting %>% 
+  select(Municipality, Region, Type_of_fuel, Supertype, Quantity_ton, Year, us_classification, us_class_eng) %>% 
+  rename(
+  Fuel_type = Type_of_fuel,
+  Fuel_supertype = Supertype,
+  Use = us_classification,
+  Use_eng = us_class_eng), 
+  measured_usage %>% 
+  select(Municipality, Region, Fuel_type, Fuel_supertype, Quantity_ton,
+         Year, Use, Use_eng) ) %>% 
+  mutate(Year = as.integer(Year))
+
+## checking
+# nrow(supplementary_data)
+# nrow(green_accounting_isl) + nrow(metin_idnadur_isl)
+
 ```
+
+# Making a version of oil data for mapping - didn't end up using
+
+```{r}
+
+oil_data_mapping <- oil_data %>% separate_rows(Municipality, sep = ",")
+
+unique(oil_data_mapping$Municipality)
+
+```
+
+## Creating a new df for Tableau - didn't end up using
+```{r}
+
+municipality_mapping <- oil_data %>%
+  distinct(Municipality) %>%
+  mutate(Municipality = str_trim(Municipality)) %>%
+  mutate(Individual_Municipality = str_split(Municipality, ","))  # list column
+
+oil_data_with_list <- oil_data %>%
+  left_join(municipality_mapping, by = "Municipality")
+
+oil_data_tableau <- oil_data_with_list %>%
+  unnest(Individual_Municipality)
+
+
+```
+
+
+## Cleaned geojson file
+
+```{r}
+# Making municipality/region df to add regions to it
+region_data <- oil_data %>%
+  separate_rows(Municipality, sep = ",") %>% 
+  select(Municipality, Region) %>% 
+  distinct()
+
+# making grouped municipality/ municipality df to add grouped municipality to it
+
+municipality_groups <- oil_data %>% 
+  select(Municipality) %>% 
+  distinct()
+
+split_municipality_groups <- function(df) {
+  df_expanded <- df %>%
+    # Create a new column 'Municipality_group' that copies the original 'Municipality' column
+    dplyr::mutate(Municipality_group = Municipality) %>%
+    
+    # Enable row-wise operations so each row is processed individually
+    dplyr::rowwise() %>%
+    
+    # Split the 'Municipality_group' string by commas into a list of individual names
+    dplyr::mutate(Municipality_individual = strsplit(Municipality_group, ",")) %>%
+    
+    # Unnest the list column so each individual municipality gets its own row
+    tidyr::unnest(Municipality_individual) %>%
+    
+    # Trim any leading or trailing whitespace from the individual municipality names
+    dplyr::mutate(Municipality_individual = trimws(Municipality_individual)) %>%
+    
+    # Keep only the two relevant columns: individual names and their original group
+    dplyr::select(Municipality_individual, Municipality_group) %>%
+    
+    # Remove row-wise grouping to return to standard data frame behavior
+    dplyr::ungroup()
+  
+  return(df_expanded)
+}
+
+
+municipality_groups <- split_municipality_groups(municipality_groups) %>% rename(Municipality = Municipality_individual)
+
+# Translating geojson variable
+# names(geo_data)
+geo_new <- geo_data %>% 
+  rename(Municipality = sveitarfelag) %>%
+  left_join(region_data, by = "Municipality") %>% 
+  left_join(municipality_groups, by = "Municipality")
+
+
+```
+
+## Regional geojson
+
+```{r}
+# Takes geo_new and summarizes the geometry to only be on regional level
+
+geo_region <- geo_new %>%
+  group_by(Region) %>%              
+  summarise(geometry = st_union(geometry)) %>%
+  ungroup()
+
+
+```
+
+
+## Municipality groups geojson
+
+```{r}
+# Takes geo_new and summarizes the geometry to only be on municipality *group* level
+
+geo_munic_group <- geo_new %>%
+  group_by( Municipality_group) %>%              
+  summarise(geometry = st_union(geometry)) %>%
+  ungroup()
+
+```
+
+
+
 
 ## Saving as csv
 
 ```{r}
 
+# Save new geojson file
+st_write(geo_new, "../Data/Clean/Final_geo_data.geojson")
+
+# Save regional geojson file
+st_write(geo_region, "../Data/Clean/geo_region.geojson", driver = "GeoJSON")
+
+# Save municipality group geojson file
+st_write(geo_munic_group, "../Data/Clean/geo_munic_group.geojson", driver = "GeoJSON")
+
+
 # Saving new, clean, and translated data sets into csv and will read these in in future R files
 
+write_csv(oil_data, "../Data/Clean/oil_data.csv")
+write_csv(supplementary_data, "../Data/Clean/supplementary_data.csv")
+write_csv(oil_data_mapping, "../Data/Clean/oil_data_mapping.csv")
+
+
+#Saving to xlsx for Tableau
+# Create a new workbook
+wb <- createWorkbook()
+
+# Add two data frames to separate sheets
+addWorksheet(wb, "Sheet1")
+writeData(wb, "Sheet1", oil_data)
+
+addWorksheet(wb, "Sheet2")
+writeData(wb, "Sheet2", oil_data_tableau)
+
+addWorksheet(wb, "Sheet3")
+writeData(wb, "Sheet3", supplementary_data)
+
+# Save workbook
+saveWorkbook(wb, "../Data/Clean/oil_data_full.xlsx", overwrite = TRUE)
+
+```
+
+
+
+# testing
+
+```{r}
+nrow(oil_data)
+nrow(oil_data %>% filter(!is.na(Region)))
+
+oil_data %>% filter(Use_category_eng == "Flights")
+
+
+supplementary_data %>% filter(Region == "Vestfirðir") 
+
+
+
+# Vísital = Index. Makes a total pc oil use across iceland ?
+
+pop_reg_isl_long <- pop_reg_isl %>%
+  pivot_longer(cols = -landshluti, names_to = "ar", values_to = "population") %>%
+  mutate(ar = as.numeric(ar))
+
+# Groups by sveitarfelag/municipality, calculates an avg (?) pop so no variation across years
+ibuafjoldi_summary <- pop_reg_isl_long %>%
+  filter(landshluti != 'Total') %>%
+  group_by(landshluti) %>%
+  summarise(population = sum(population)/11)   #/11 thvi medal
+
+oil_data_no_flights <- oil_data %>% filter(Use_category_eng != "Flights") 
+
+# Vísital = Index. Makes a total pc oil use across iceland ?
+medaltal_total <- ( sum( oil_data_no_flights$Quantity_tons ) / 11 ) /  sum(ibuafjoldi_summary$population)
+
+print(medaltal_total)
+
+
+
+oil_data_no_flights %>% 
+  group_by(Region) %>% 
+  summarize(index_pc = ( (sum(Quantity_tons, na.rm = TRUE)/11) / mean(Population_region) )/ medaltal_total)
 
 ```
 
