@@ -410,3 +410,13 @@ oil_data_no_flights %>%
 
 ```
 
+
+# numerical summaries
+```{r}
+
+oil_data %>% 
+  summarize(range(Quantity_tons))
+
+```
+
+
